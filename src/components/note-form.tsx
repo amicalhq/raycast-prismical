@@ -146,10 +146,12 @@ export function NoteForm({
             title="Discard Saved Recovery"
             icon={Icon.Trash}
             onAction={async () => {
+              if (lock.current) return;
               await LocalStorage.removeItem(journalKey);
               setCreated(undefined);
               setUncertain(false);
               setBody("");
+              setReady(true);
             }}
           />
           <Action title="Use Clipboard" icon={Icon.Clipboard} onAction={() => insert("clipboard")} />

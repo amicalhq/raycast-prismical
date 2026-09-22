@@ -13,7 +13,7 @@ import {
 } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 import { Note, Page } from "../lib/api";
-import { API_ORIGIN, client, noteUrl, settings } from "../lib/config";
+import { client, noteUrl, settings } from "../lib/config";
 import { createHash } from "node:crypto";
 import { CaptureDraft, saveCapture } from "../lib/capture";
 export function NoteForm({
@@ -38,7 +38,7 @@ export function NoteForm({
   const journalKey =
     "capture-" +
     createHash("sha256")
-      .update(JSON.stringify([API_ORIGIN, settings().apiKey, note?.id || "new"]))
+      .update(JSON.stringify([settings().apiUrl, settings().apiKey, note?.id || "new"]))
       .digest("hex");
   useEffect(() => {
     LocalStorage.getItem<string>(journalKey)

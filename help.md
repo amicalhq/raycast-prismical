@@ -1,9 +1,7 @@
-# Connect Prismical Cloud
+# Connect Prismical
 
-1. Sign in to [Prismical Cloud](https://app.prismical.ai).
-2. Open **Settings → API & MCP** and create a dedicated API key.
-3. Paste it into **Prismical API Key**.
+For cloud notes, create an API key in **Prismical → Settings → API & MCP** and enter it in **Prismical API Key**. Keys belong to one workspace.
 
-The key grants access to its workspace. To switch workspaces, replace the key. Revoke it in Prismical when no longer needed.
+Desktop recording shortcuts do not require an API key. Install a compatible Prismical desktop version and complete its recording setup first.
 
-No desktop installation is required. Notes stored only in desktop local mode are not accessible. Server URLs are configured automatically.
+Leave the server URLs and desktop socket override at their defaults unless testing a local development build.

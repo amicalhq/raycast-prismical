@@ -1,14 +1,16 @@
 import { getPreferenceValues } from "@raycast/api";
-import { Api } from "./api";
-export const API_ORIGIN = "https://api.prismical.ai";
-export const WEB_ORIGIN = "https://app.prismical.ai";
+import { Api, origin } from "./api";
 export interface Settings {
-  apiKey: string;
+  apiKey?: string;
+  apiUrl?: string;
+  webUrl?: string;
+  desktopSocket?: string;
 }
 export const settings = () => getPreferenceValues<Settings>();
 export function client() {
-  return new Api(API_ORIGIN, settings().apiKey);
+  const p = settings();
+  return new Api(p.apiUrl || "https://api.prismical.ai", p.apiKey || "");
 }
 export function noteUrl(id: string) {
-  return `${WEB_ORIGIN}/notes/${encodeURIComponent(id)}`;
+  return `${origin(settings().webUrl || "https://app.prismical.ai")}/notes/${encodeURIComponent(id)}`;
 }

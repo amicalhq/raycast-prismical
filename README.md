@@ -1,47 +1,54 @@
-# Prismical
+# Prismical — Desktop v2 WIP
 
-Search, preview, and capture notes in your Prismical Cloud workspace from Raycast.
+**Experimental branch. Do not submit to the Store.** The cloud-only first release lives on `main`. These desktop commands require a compatible public desktop release, version documentation, and release verification before promotion.
+
+Find and capture notes without leaving your keyboard, or start a desktop recording in a fresh floating note.
 
 ## Commands
 
-- **Search Notes** — browse recent notes with emoji icons, search all notes, preview Markdown, view existing meeting transcripts, and copy note content or links.
-- **Create Note** — capture a title and Markdown body, with an optional destination folder. Explicit actions let you use selected text or clipboard contents.
-- **Append to Note** — find a writable note and add text without replacing its existing content.
+- **Search Notes** — recent notes with their emoji icons, full-text search, Markdown preview, copy link/body, transcript, and open in Prismical.
+- **Create Note** — title, Markdown body and optional folder. Use Selected Text / Use Clipboard are explicit actions.
+- **Append to Note** — choose a writable note and add text without replacing its existing body.
+- **Start Recording in New Note** — opens Prismical's floating note and requests recording in the desktop's active workspace.
+- **Stop Recording** — stops the current desktop recording.
+- **Open Floating Note** — opens the desktop floating note.
 
-Open notes in Prismical's web app. Assign command aliases and hotkeys in Raycast Settings. Recent notes display their emoji icons; full-text search uses document icons because search responses do not include note icons. Emoji in titles and Markdown remains visible.
+Assign aliases and hotkeys in Raycast Settings → Extensions. Existing shortcuts are left unchanged.
 
 ## Setup
 
-1. Sign in to [Prismical Cloud](https://app.prismical.ai).
-2. Go to **Settings → API & MCP** and create a dedicated API key for your workspace.
-3. Enter it in **Prismical API Key** when opening a command for the first time.
+Cloud commands require a Prismical account and a dedicated API key from Prismical Settings → API & MCP. Set **Prismical API Key** in this extension's preferences. The bound workspace appears in Search Notes. Revoked keys can be replaced in preferences. Cloud notes are fetched on demand, without a persistent note cache.
 
-The API key is the only extension setting. Production server URLs are configured automatically. The workspace name appears above the note list. Replace the key to change workspaces or recover from an expired/revoked key.
+Desktop commands need a Prismical desktop build that provides the launcher socket. A supported public release must be available before these commands are submitted to the Store. Older builds cannot accept these commands. They use the desktop's active account/workspace or local mode; this can differ from your API key's workspace. They do not need an API key. Recording permissions, provider/model setup and plan restrictions are handled visibly in Prismical. A “recording requested” message means the command was dispatched; verify the recording indicator in Prismical.
 
-Requires macOS, Raycast, a Prismical Cloud account, and API access for that workspace. No desktop installation is required. Desktop local-only notes and recording controls are not supported in this release. Existing cloud meeting transcripts can be viewed.
-
-## Privacy and recovery
-
-Cloud requests go directly to Prismical. The API key is stored in a Raycast password preference and sent only to the Prismical API; redirects are rejected. Clipboard and selected text are read only when you choose those actions. The extension adds no analytics or persistent note cache.
-
-Failed or interrupted captures can retain draft text in Raycast local storage, scoped to the API origin, key, and destination. Partial creates preserve the note ID so recovery writes to the same note. Ambiguous writes require checking Prismical before allowing a retry. No automatic mutation retries occur. **Discard Saved Recovery** clears the local recovery state, not the server note.
-
-Raycast preserves unsent text in the root Create Note command. Nested forms preserve submitted drafts after a failed or uncertain save; unsent nested-form text is not retained after leaving the form.
+The initial release supports macOS. Desktop commands use a user-owned Unix socket under `~/Library/Application Support/Prismical/launcher/raycast.sock`, inside a directory accessible only to your user. They do not expose a network port or start recording through public URL links.
 
 ## Development
 
-Requires Node >=22.22.2. This is a standalone npm project.
+Requires Node >=22.22.2 and Raycast. Generated with Raycast's Create Extension command, then updated to the current SDK.
 
 ```sh
 npm ci
+npm run dev
 npm test
 npm run lint
 npm run build
-npm run dev
 ```
 
-Tests inject a fetch implementation into the API client. Development servers and screenshot fixtures should use an isolated development copy; production commands do not expose server overrides.
+This folder is a standalone npm project; it does not depend on monorepo packages. For local cloud testing set Core API URL to `https://prismical-core.localhost` and Web App URL to `https://prismical-web.localhost`, with a dedicated development API key. The note service must run for body writes. Trust the portless CA; do not disable TLS verification. Set Desktop Socket Path only when testing a separately launched development profile.
 
-`main` contains the cloud-only first release. The `wip/desktop-v2` branch preserves experimental desktop commands for a later release and is not ready for Store submission.
+## Recovery
+
+A partial create preserves the note ID and draft in extension-local storage, scoped to the API origin, credential, and destination. Retrying continues on that note. Interrupted or ambiguous writes require checking Prismical before explicitly allowing retry. Append is never automatically retried. “Discard Saved Recovery” clears the recovery state, not the note on the server. Raycast preserves unsent text in the root Create Note command. Nested forms preserve submitted drafts after a failed or uncertain save; unsent nested-form text is not retained after leaving the form.
+
+## Verification
+
+Unit tests cover HTTP authentication/errors, pagination, cancellation, mutation ambiguity, and partial-create recovery. Desktop tests cover private socket permissions, command validation, duplicate starts and lifecycle cleanup. Native Raycast and packaged desktop checks are also required before release.
 
 Publishing to the Raycast Store is a separate release step. Do not publish this package to npm.
+
+## Privacy
+
+The extension sends cloud requests directly to your configured Prismical API. Your API key is stored in a Raycast password preference and is sent only to that API origin; HTTP redirects are rejected. Selected text and clipboard contents are read only when you choose the corresponding action. Failed or interrupted captures may retain draft content in Raycast local storage until resolved or discarded. The extension adds no analytics.
+
+Note emoji icons are displayed in recent notes. Full-text search currently returns no icon field, so search results use a document icon. Emoji in titles and Markdown remains visible in either view.

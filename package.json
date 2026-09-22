@@ -2,14 +2,15 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "prismical",
   "title": "Prismical",
-  "description": "Search, preview, and capture notes in your Prismical Cloud workspace.",
+  "description": "Search, preview, and capture Prismical notes, or start a recording from your keyboard.",
   "icon": "prismical-icon.png",
   "author": "nch",
   "platforms": [
     "macOS"
   ],
   "categories": [
-    "Productivity"
+    "Productivity",
+    "Applications"
   ],
   "license": "MIT",
   "commands": [
@@ -33,6 +34,27 @@
       "subtitle": "Prismical",
       "mode": "view",
       "description": "Add text to an existing note."
+    },
+    {
+      "name": "start-recording",
+      "title": "Start Recording in New Note",
+      "subtitle": "Prismical",
+      "mode": "no-view",
+      "description": "Create a fresh note and record in the desktop active workspace."
+    },
+    {
+      "name": "stop-recording",
+      "title": "Stop Recording",
+      "subtitle": "Prismical",
+      "mode": "no-view",
+      "description": "Stop the active desktop recording."
+    },
+    {
+      "name": "open-floating-note",
+      "title": "Open Floating Note",
+      "subtitle": "Prismical",
+      "mode": "no-view",
+      "description": "Show the desktop floating note."
     }
   ],
   "dependencies": {
@@ -64,14 +86,41 @@
       "name": "apiKey",
       "type": "password",
       "title": "Prismical API Key",
-      "description": "Create a workspace API key in Prismical Cloud \u2192 Settings \u2192 API & MCP. Local-only desktop notes are not supported.",
-      "required": true
+      "description": "Required only for cloud notes. Create a dedicated key in Prismical Settings → API & MCP.",
+      "required": false
+    },
+    {
+      "name": "apiUrl",
+      "type": "textfield",
+      "title": "Core API URL",
+      "description": "Use the default for Prismical Cloud; change only for local development.",
+      "required": false,
+      "default": "https://api.prismical.ai",
+      "placeholder": "https://api.prismical.ai"
+    },
+    {
+      "name": "webUrl",
+      "type": "textfield",
+      "title": "Web App URL",
+      "description": "The Prismical web app used to open notes.",
+      "required": false,
+      "default": "https://app.prismical.ai",
+      "placeholder": "https://app.prismical.ai"
+    },
+    {
+      "name": "desktopSocket",
+      "type": "textfield",
+      "title": "Desktop Socket Path",
+      "description": "Optional developer override. Defaults to the installed Prismical profile.",
+      "required": false,
+      "placeholder": "Use the installed Prismical app"
     }
   ],
   "keywords": [
     "notes",
     "meetings",
     "transcription",
-    "capture"
+    "capture",
+    "recording"
   ]
 }

@@ -61,7 +61,7 @@ export class Api {
         0,
         method !== "GET",
         method === "GET"
-          ? "Could not reach Prismical. Check your connection and try again."
+          ? "Could not reach Prismical. Check your connection and API URL."
           : "Connection interrupted. The change may have saved. Check the note before trying again.",
       );
     }

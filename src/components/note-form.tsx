@@ -159,11 +159,14 @@ export function NoteForm({
           {(note?.id || created) && (
             <Action.OpenInBrowser title="Check Note in Prismical" url={noteUrl((note?.id || created)!)} />
           )}
-          {uncertain && (
+          {uncertain && !busy && (
             <Action
               title="I Checked — Allow Retry"
               icon={Icon.ArrowClockwise}
-              onAction={() => persist({ title, body, folder, id: note?.id || created, uncertain: false })}
+              onAction={() => {
+                if (lock.current) return;
+                return persist({ title, body, folder, id: note?.id || created, uncertain: false });
+              }}
             />
           )}
         </ActionPanel>

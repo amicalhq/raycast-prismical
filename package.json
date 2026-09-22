@@ -3,7 +3,7 @@
   "name": "prismical",
   "title": "Prismical",
   "description": "Search, preview, and capture notes in your Prismical Cloud workspace.",
-  "icon": "prismical-icon.png",
+  "icon": "prismical-icon-rounded.png",
   "author": "nch",
   "platforms": [
     "macOS"

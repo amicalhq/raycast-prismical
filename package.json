@@ -3,7 +3,7 @@
   "name": "prismical",
   "title": "Prismical",
   "description": "Search, preview, and capture Prismical notes, or start a recording from your keyboard.",
-  "icon": "prismical-icon-balanced.png",
+  "icon": "prismical-icon-inset.png",
   "author": "nch",
   "platforms": [
     "macOS"

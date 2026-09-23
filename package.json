@@ -86,7 +86,7 @@
       "name": "apiKey",
       "type": "password",
       "title": "Prismical API Key",
-      "description": "Required only for cloud notes. Create a dedicated key in Prismical Settings → API & MCP.",
+      "description": "Connect your Prismical account. In the Prismical app, go to Settings → API & MCP to create an API key.",
       "required": false
     },
     {

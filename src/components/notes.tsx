@@ -1,4 +1,14 @@
-import { Action, ActionPanel, Detail, Icon, List, openExtensionPreferences, showToast, Toast } from "@raycast/api";
+import {
+  Action,
+  ActionPanel,
+  Detail,
+  Icon,
+  List,
+  openExtensionPreferences,
+  showToast,
+  Toast,
+  Keyboard,
+} from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 import { client, noteUrl, settings } from "../lib/config";
 import { noteEmoji } from "../lib/note-icon";
@@ -8,8 +18,11 @@ import { NoteForm } from "./note-form";
 export function NoteDetail({ id, append = false }: { id: string; append?: boolean }) {
   const [note, setNote] = useState<Note>();
   const [error, setError] = useState("");
+  const [revision, refresh] = useState(0);
   useEffect(() => {
     const abort = new AbortController();
+    setError("");
+    setNote(undefined);
     client()
       .note(id, abort.signal)
       .then(setNote)
@@ -17,12 +30,12 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
         if (!abort.signal.aborted) setError(e.message);
       });
     return () => abort.abort();
-  }, [id]);
+  }, [id, revision]);
   if (append && note?.can_write) return <NoteForm note={note} />;
   return (
     <Detail
       isLoading={!note && !error}
-      navigationTitle={note?.title || "Note"}
+      navigationTitle={append ? "Append to Note" : "Note"}
       markdown={
         error ||
         (append && note && !note.can_write
@@ -31,6 +44,7 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
       }
       actions={
         <ActionPanel>
+          {error && <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />}
           {note && (
             <>
               <Action.OpenInBrowser title="Open in Prismical" url={noteUrl(id)} />
@@ -50,12 +64,16 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
 }
 function Transcript({ id }: { id: string }) {
   const [markdown, setMarkdown] = useState<string>();
+  const [error, setError] = useState("");
+  const [revision, refresh] = useState(0);
   useEffect(() => {
-    let current = true;
+    const abort = new AbortController();
+    setMarkdown(undefined);
+    setError("");
     client()
-      .transcript(id)
+      .transcript(id, abort.signal)
       .then((data) => {
-        if (current)
+        if (!abort.signal.aborted)
           setMarkdown(
             (data.truncated ? "> Some recordings are omitted. Open Prismical to see the rest.\n\n" : "") +
               (data.results
@@ -64,20 +82,19 @@ function Transcript({ id }: { id: string }) {
           );
       })
       .catch((e) => {
-        if (current) setMarkdown(e.message);
+        if (!abort.signal.aborted) setError(e.message);
       });
-    return () => {
-      current = false;
-    };
-  }, [id]);
+    return () => abort.abort();
+  }, [id, revision]);
   return (
     <Detail
       navigationTitle="Transcript"
-      isLoading={markdown === undefined}
-      markdown={markdown || ""}
+      isLoading={markdown === undefined && !error}
+      markdown={error || markdown || ""}
       actions={
         <ActionPanel>
-          <Action.CopyToClipboard title="Copy Transcript" content={markdown || ""} />
+          {error && <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />}
+          {markdown !== undefined && <Action.CopyToClipboard title="Copy Transcript" content={markdown} />}
           <Action.OpenInBrowser title="Open in Prismical" url={noteUrl(id)} />
         </ActionPanel>
       }
@@ -169,11 +186,18 @@ export function Notes({ append = false }: { append?: boolean }) {
     >
       <List.EmptyView
         title={error ? "Could Not Load Notes" : loading ? "Loading Notes" : "No Notes Found"}
-        description={error || "Create a note to capture your next idea."}
+        description={
+          error ||
+          (loading
+            ? ""
+            : query.trim()
+              ? "Try another search or create a note."
+              : "Create a note to capture your next idea.")
+        }
         actions={
           <ActionPanel>
+            {error && <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />}
             <Action.Push title="Create Note" icon={Icon.Plus} target={<NoteForm initialTitle={query} />} />
-            <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />
             <Action title="Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
           </ActionPanel>
         }
@@ -189,17 +213,22 @@ export function Notes({ append = false }: { append?: boolean }) {
             actions={
               <ActionPanel>
                 {append ? (
-                  <Action.Push title="Choose Note" target={<NoteDetail id={note.id} append />} />
+                  <Action.Push title="Choose Note" icon={Icon.Pencil} target={<NoteDetail id={note.id} append />} />
                 ) : (
                   <>
-                    <Action.Push title="Preview Note" target={<NoteDetail id={note.id} />} />
+                    <Action.Push title="Preview Note" icon={Icon.Document} target={<NoteDetail id={note.id} />} />
                     <Action.OpenInBrowser title="Open in Prismical" url={noteUrl(note.id)} />
                   </>
                 )}
                 <Action.CopyToClipboard title="Copy Link" content={noteUrl(note.id)} />
                 <Action.Push title="Append to Note" icon={Icon.Pencil} target={<NoteDetail id={note.id} append />} />
                 <Action.Push title="Create Note" icon={Icon.Plus} target={<NoteForm initialTitle={query} />} />
-                <Action title="Refresh" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />
+                <Action
+                  title="Refresh"
+                  shortcut={Keyboard.Shortcut.Common.Refresh}
+                  icon={Icon.ArrowClockwise}
+                  onAction={() => refresh((n) => n + 1)}
+                />
                 <Action title="Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
               </ActionPanel>
             }

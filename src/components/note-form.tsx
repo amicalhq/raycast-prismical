@@ -136,9 +136,9 @@ export function NoteForm({
       navigationTitle={root ? undefined : note ? "Append to Note" : "Create Note"}
       actions={
         <ActionPanel>
-          {!uncertain && ready && (
+          {(busy || !uncertain) && ready && (
             <Action.SubmitForm
-              title={note ? "Append Text" : created ? "Save Text to Created Note" : "Create Note"}
+              title={busy ? "Saving…" : note ? "Append Text" : created ? "Save Text to Created Note" : "Create Note"}
               onSubmit={submit}
             />
           )}

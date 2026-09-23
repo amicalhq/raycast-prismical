@@ -18,7 +18,7 @@ Search, read, and capture notes in your Prismical Cloud workspace without leavin
 
 Set aliases and keyboard shortcuts for these commands in Raycast Settings.
 
-![Browse recent notes](metadata/prismical-1.png)
+![Browse recent notes](media/search-notes.png)
 
 ## Get started
 

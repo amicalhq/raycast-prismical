@@ -135,9 +135,12 @@ export class Api {
   write(id: string, markdown: string, mode: "append" | "replace") {
     return this.request<Note>(`/v1/notes/${encodeURIComponent(id)}/content`, "PUT", { markdown, mode });
   }
-  transcript(id: string) {
+  transcript(id: string, signal?: AbortSignal) {
     return this.request<{ results: { recording_id: string; created_at: string; text: string }[]; truncated: boolean }>(
       `/v1/notes/${encodeURIComponent(id)}/transcript`,
+      "GET",
+      undefined,
+      signal,
     );
   }
 }

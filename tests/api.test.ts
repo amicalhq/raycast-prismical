@@ -54,3 +54,13 @@ test('note icons accept emoji sequences without fetching URLs or local files', (
   for (const emoji of ['💬', '👩🏽‍💻', '🇨🇦', '1️⃣']) assert.equal(noteEmoji(emoji), emoji);
   for (const value of [null, '', 'https://example.com/icon.png', '/tmp/icon.png', 'icon.png', 'two words', '💬📚']) assert.equal(noteEmoji(value), undefined);
 });
+
+test('leaving a transcript cancels its request', async () => {
+  const controller = new AbortController();
+  const api = new Api('https://example.com', 'test', async (_url, options) => {
+    controller.abort();
+    options?.signal?.throwIfAborted();
+    return reply({ results: [], truncated: false });
+  });
+  await assert.rejects(api.transcript('n', controller.signal), e => e instanceof Error && e.name === 'AbortError');
+});

@@ -30,6 +30,10 @@ export function NoteForm({
   const [folder, setFolder] = useState("");
   const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
   const [busy, setBusy] = useState(false);
+  const [bodyError, setBodyError] = useState<string>();
+  const [folderError, setFolderError] = useState("");
+  const [foldersLoading, setFoldersLoading] = useState(!note);
+  const [folderRevision, reloadFolders] = useState(0);
   const [created, setCreated] = useState<string>();
   const [uncertain, setUncertain] = useState(false);
   const lock = useRef(false);
@@ -63,6 +67,9 @@ export function NoteForm({
   useEffect(() => {
     if (note) return;
     const abort = new AbortController();
+    setFoldersLoading(true);
+    setFolderError("");
+    setFolders([]);
     async function load() {
       let cursor = "";
       do {
@@ -76,55 +83,65 @@ export function NoteForm({
         cursor = page.has_more ? page.next_cursor || "" : "";
       } while (cursor);
     }
-    load().catch(() => {});
+    load()
+      .catch((error) => {
+        if (!abort.signal.aborted) setFolderError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => {
+        if (!abort.signal.aborted) setFoldersLoading(false);
+      });
     return () => abort.abort();
-  }, [note]);
+  }, [note, folderRevision]);
   async function submit() {
     if (lock.current || uncertain || !ready) return;
-    if (note && !body.trim()) {
-      await showToast({ style: Toast.Style.Failure, title: "Enter text to append" });
-      return;
-    }
-    if (body.length > 262144) {
-      await showToast({
-        style: Toast.Style.Failure,
-        title: "Note is too long",
-        message: "Use less than 256 KB of text.",
-      });
-      return;
-    }
+    const validationError = validateBody(body);
+    setBodyError(validationError);
+    if (validationError) return;
     lock.current = true;
     setBusy(true);
     let id = note?.id || created;
+    let toast: Toast | undefined;
     try {
+      toast = await showToast({ style: Toast.Style.Animated, title: note ? "Appending text…" : "Saving note…" });
       id = await saveCapture(client(), { title, body, folder, id, uncertain: false }, persist);
       await LocalStorage.removeItem(journalKey);
-      await showToast({
-        style: Toast.Style.Success,
-        title: note ? "Text appended" : "Note created",
-        primaryAction: { title: "Open Note", onAction: () => open(noteUrl(id!)) },
-      });
+      toast.style = Toast.Style.Success;
+      toast.title = note ? "Text appended" : "Note created";
+      toast.primaryAction = { title: "Open Note", onAction: () => open(noteUrl(id!)) };
       setBody("");
       pop();
     } catch (e) {
-      await showToast({
+      const options = {
         style: Toast.Style.Failure,
         title: id ? "Could not save text" : "Could not create note",
         message: e instanceof Error ? e.message : String(e),
-      });
+      };
+      if (toast) Object.assign(toast, options);
+      else await showToast(options);
     } finally {
       lock.current = false;
       setBusy(false);
     }
   }
+  function validateBody(value: string) {
+    if (note && !value.trim()) return "Enter text to append.";
+    if (value.length > 262144) return "Use at most 262,144 characters.";
+    return undefined;
+  }
+  function changeBody(value: string) {
+    if (lock.current) return;
+    setBody(value);
+    setBodyError(undefined);
+  }
   async function insert(source: "clipboard" | "selection") {
+    if (lock.current) return;
     try {
       const text = source === "clipboard" ? await Clipboard.readText() : await getSelectedText();
       if (!text) {
         await showToast({ style: Toast.Style.Failure, title: "No text available" });
         return;
       }
-      setBody(text);
+      changeBody(text);
     } catch {
       await showToast({ style: Toast.Style.Failure, title: "No text available" });
     }
@@ -132,28 +149,39 @@ export function NoteForm({
   return (
     <Form
       enableDrafts={root}
-      isLoading={busy || !ready}
+      isLoading={busy || !ready || foldersLoading}
       navigationTitle={root ? undefined : note ? "Append to Note" : "Create Note"}
       actions={
         <ActionPanel>
           {(busy || !uncertain) && ready && (
             <Action.SubmitForm
               title={busy ? "Saving…" : note ? "Append Text" : created ? "Save Text to Created Note" : "Create Note"}
+              icon={note ? Icon.Pencil : Icon.Plus}
               onSubmit={submit}
             />
           )}
-          <Action
-            title="Discard Saved Recovery"
-            icon={Icon.Trash}
-            onAction={async () => {
-              if (lock.current) return;
-              await LocalStorage.removeItem(journalKey);
-              setCreated(undefined);
-              setUncertain(false);
-              setBody("");
-              setReady(true);
-            }}
-          />
+          {!busy && (
+            <Action
+              title="Discard Saved Recovery"
+              icon={Icon.Trash}
+              onAction={async () => {
+                if (lock.current) return;
+                await LocalStorage.removeItem(journalKey);
+                setCreated(undefined);
+                setUncertain(false);
+                setBody("");
+                setBodyError(undefined);
+                setReady(true);
+              }}
+            />
+          )}
+          {folderError && (
+            <Action
+              title="Retry Loading Folders"
+              icon={Icon.ArrowClockwise}
+              onAction={() => reloadFolders((n) => n + 1)}
+            />
+          )}
           <Action title="Use Clipboard" icon={Icon.Clipboard} onAction={() => insert("clipboard")} />
           <Action title="Use Selected Text" icon={Icon.Text} onAction={() => insert("selection")} />
           {(note?.id || created) && (
@@ -181,10 +209,31 @@ export function NoteForm({
       {created && !note && !busy && (
         <Form.Description title="Note Created" text="The note already exists. Saving again writes to that same note." />
       )}
-      {!note && !created && (
+      {folderError && (
+        <Form.Description
+          title="Could Not Load Folders"
+          text={`${folderError} Use Retry Loading Folders in Actions, or save without choosing a folder.`}
+        />
+      )}
+      {!note && (!created || busy) && (
         <>
-          <Form.TextField id="title" title="Title" value={title} onChange={setTitle} placeholder="Optional title" />
-          <Form.Dropdown id="folder" title="Folder" value={folder} onChange={setFolder}>
+          <Form.TextField
+            id="title"
+            title="Title"
+            value={title}
+            onChange={(value) => {
+              if (!lock.current) setTitle(value);
+            }}
+            placeholder="Optional title"
+          />
+          <Form.Dropdown
+            id="folder"
+            title="Folder"
+            value={folder}
+            onChange={(value) => {
+              if (!lock.current) setFolder(value);
+            }}
+          >
             <Form.Dropdown.Item value="" title="No Folder" />
             {folders.map((f) => (
               <Form.Dropdown.Item key={f.id} value={f.id} title={f.name} />
@@ -196,7 +245,11 @@ export function NoteForm({
         id="body"
         title={note ? "Text to Append" : "Note"}
         value={body}
-        onChange={setBody}
+        onChange={changeBody}
+        error={bodyError}
+        onBlur={(event) => {
+          if (!lock.current) setBodyError(validateBody(event.target.value || ""));
+        }}
         placeholder="Write in Markdown…"
       />
     </Form>

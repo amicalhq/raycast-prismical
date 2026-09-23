@@ -25,7 +25,9 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
     setNote(undefined);
     client()
       .note(id, abort.signal)
-      .then(setNote)
+      .then((data) => {
+        if (!abort.signal.aborted) setNote(data);
+      })
       .catch((e) => {
         if (!abort.signal.aborted) setError(e.message);
       });
@@ -51,7 +53,16 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
               <Action.CopyToClipboard title="Copy Markdown" content={note.body || ""} />
               <Action.CopyToClipboard title="Copy Link" content={noteUrl(id)} />
               {note.can_write && (
-                <Action.Push title="Append to Note" icon={Icon.Pencil} target={<NoteForm note={note} />} />
+                <Action.Push
+                  title="Append to Note"
+                  icon={Icon.Pencil}
+                  target={<NoteForm note={note} />}
+                  onPop={() => {
+                    setNote(undefined);
+                    setError("");
+                    refresh((n) => n + 1);
+                  }}
+                />
               )}
               <Action.Push title="View Transcript" icon={Icon.Microphone} target={<Transcript id={id} />} />
             </>

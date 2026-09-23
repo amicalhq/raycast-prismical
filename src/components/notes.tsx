@@ -13,6 +13,7 @@ import { useEffect, useRef, useState } from "react";
 import { client, noteUrl, settings } from "../lib/config";
 import { noteEmoji } from "../lib/note-icon";
 import { Note } from "../lib/api";
+import { previewMarkdown } from "../lib/presentation";
 import { NoteForm } from "./note-form";
 
 export function NoteDetail({ id, append = false }: { id: string; append?: boolean }) {
@@ -42,7 +43,10 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
         error ||
         (append && note && !note.can_write
           ? "> You can view this note, but do not have permission to append.\n\n"
-          : "") + (note?.body || (note ? "_This note is empty._" : ""))
+          : "") +
+          (note
+            ? `# ${note.title.replace(/[\\`*_{}[\]()#+.!<>~-]/g, "\\$&").replace(/\n/g, " ")}\n\n${previewMarkdown(note.body || "_This note is empty._")}`
+            : "")
       }
       actions={
         <ActionPanel>
@@ -67,7 +71,7 @@ export function NoteDetail({ id, append = false }: { id: string; append?: boolea
               <Action.Push title="View Transcript" icon={Icon.Microphone} target={<Transcript id={id} />} />
             </>
           )}
-          <Action title="Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
+          <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
         </ActionPanel>
       }
     />
@@ -101,7 +105,7 @@ function Transcript({ id }: { id: string }) {
     <Detail
       navigationTitle="Transcript"
       isLoading={markdown === undefined && !error}
-      markdown={error || markdown || ""}
+      markdown={error || previewMarkdown(markdown || "")}
       actions={
         <ActionPanel>
           {error && <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />}
@@ -137,7 +141,6 @@ export function Notes({ append = false }: { append?: boolean }) {
     controller.current?.abort();
     const abort = new AbortController();
     controller.current = abort;
-    setNotes([]);
     setNext(undefined);
     setError("");
     setLoading(true);
@@ -153,7 +156,10 @@ export function Notes({ append = false }: { append?: boolean }) {
             }
           })
           .catch((e) => {
-            if (!abort.signal.aborted) setError(e.message);
+            if (!abort.signal.aborted) {
+              setNotes([]);
+              setError(e.message);
+            }
           })
           .finally(() => {
             if (version === generation.current) setLoading(false);
@@ -179,7 +185,11 @@ export function Notes({ append = false }: { append?: boolean }) {
       }
     } catch (e) {
       if (version === generation.current)
-        await showToast({ style: Toast.Style.Failure, title: "Could not load more notes", message: String(e) });
+        await showToast({
+          style: Toast.Style.Failure,
+          title: "Could not load more notes",
+          message: e instanceof Error ? e.message : String(e),
+        });
     } finally {
       if (version === generation.current) {
         loadingMore.current = false;
@@ -208,8 +218,13 @@ export function Notes({ append = false }: { append?: boolean }) {
         actions={
           <ActionPanel>
             {error && <Action title="Retry" icon={Icon.ArrowClockwise} onAction={() => refresh((n) => n + 1)} />}
-            <Action.Push title="Create Note" icon={Icon.Plus} target={<NoteForm initialTitle={query} />} />
-            <Action title="Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
+            <Action.Push
+              title="Create Note"
+              icon={Icon.Plus}
+              target={<NoteForm initialTitle={query} />}
+              onPop={() => refresh((n) => n + 1)}
+            />
+            <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
           </ActionPanel>
         }
       />
@@ -224,23 +239,45 @@ export function Notes({ append = false }: { append?: boolean }) {
             actions={
               <ActionPanel>
                 {append ? (
-                  <Action.Push title="Choose Note" icon={Icon.Pencil} target={<NoteDetail id={note.id} append />} />
+                  <Action.Push
+                    title="Choose Note"
+                    icon={Icon.Pencil}
+                    target={<NoteDetail id={note.id} append />}
+                    onPop={() => refresh((n) => n + 1)}
+                  />
                 ) : (
                   <>
-                    <Action.Push title="Preview Note" icon={Icon.Document} target={<NoteDetail id={note.id} />} />
+                    <Action.Push
+                      title="Preview Note"
+                      icon={Icon.Document}
+                      target={<NoteDetail id={note.id} />}
+                      onPop={() => refresh((n) => n + 1)}
+                    />
                     <Action.OpenInBrowser title="Open in Prismical" url={noteUrl(note.id)} />
                   </>
                 )}
                 <Action.CopyToClipboard title="Copy Link" content={noteUrl(note.id)} />
-                <Action.Push title="Append to Note" icon={Icon.Pencil} target={<NoteDetail id={note.id} append />} />
-                <Action.Push title="Create Note" icon={Icon.Plus} target={<NoteForm initialTitle={query} />} />
+                {!append && (
+                  <Action.Push
+                    title="Append to Note"
+                    icon={Icon.Pencil}
+                    target={<NoteDetail id={note.id} append />}
+                    onPop={() => refresh((n) => n + 1)}
+                  />
+                )}
+                <Action.Push
+                  title="Create Note"
+                  icon={Icon.Plus}
+                  target={<NoteForm initialTitle={query} />}
+                  onPop={() => refresh((n) => n + 1)}
+                />
                 <Action
                   title="Refresh"
                   shortcut={Keyboard.Shortcut.Common.Refresh}
                   icon={Icon.ArrowClockwise}
                   onAction={() => refresh((n) => n + 1)}
                 />
-                <Action title="Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
+                <Action title="Open Extension Preferences" icon={Icon.Gear} onAction={openExtensionPreferences} />
               </ActionPanel>
             }
           />

@@ -10,25 +10,36 @@ import {
   showToast,
   Toast,
   useNavigation,
+  confirmAlert,
+  Alert,
+  popToRoot,
 } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
 import { Note, Page } from "../lib/api";
 import { API_ORIGIN, client, noteUrl, settings } from "../lib/config";
 import { createHash } from "node:crypto";
 import { CaptureDraft, saveCapture } from "../lib/capture";
+import { appendCapture, Folder, folderLabel } from "../lib/presentation";
+export interface NoteDraftValues {
+  title: string;
+  body: string;
+  folder: string;
+}
 export function NoteForm({
   note,
   initialTitle = "",
   root = false,
+  draftValues,
 }: {
   note?: Note;
   initialTitle?: string;
   root?: boolean;
+  draftValues?: NoteDraftValues;
 }) {
-  const [title, setTitle] = useState(initialTitle);
-  const [body, setBody] = useState("");
-  const [folder, setFolder] = useState("");
-  const [folders, setFolders] = useState<{ id: string; name: string }[]>([]);
+  const [title, setTitle] = useState(draftValues?.title ?? initialTitle);
+  const [body, setBody] = useState(draftValues?.body ?? "");
+  const [folder, setFolder] = useState(draftValues?.folder ?? "");
+  const [folders, setFolders] = useState<Folder[]>([]);
   const [busy, setBusy] = useState(false);
   const [bodyError, setBodyError] = useState<string>();
   const [folderError, setFolderError] = useState("");
@@ -38,17 +49,29 @@ export function NoteForm({
   const [uncertain, setUncertain] = useState(false);
   const lock = useRef(false);
   const { pop } = useNavigation();
+  const [hasRecovery, setHasRecovery] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [titleError, setTitleError] = useState<string>();
   const [ready, setReady] = useState(false);
   const journalKey =
     "capture-" +
     createHash("sha256")
-      .update(JSON.stringify([API_ORIGIN, settings().apiKey, note?.id || "new"]))
+      .update(JSON.stringify([API_ORIGIN, settings().apiKey, note?.id || (root ? "new-root" : "new")]))
       .digest("hex");
   useEffect(() => {
     LocalStorage.getItem<string>(journalKey)
       .then((raw) => {
         if (raw) {
+          setHasRecovery(true);
           const draft: CaptureDraft = JSON.parse(raw);
+          if (
+            typeof draft.title !== "string" ||
+            typeof draft.body !== "string" ||
+            typeof draft.folder !== "string" ||
+            typeof draft.uncertain !== "boolean" ||
+            (draft.id !== undefined && typeof draft.id !== "string")
+          )
+            throw new Error("Invalid saved recovery");
           setTitle(draft.title);
           setBody(draft.body);
           setFolder(draft.folder);
@@ -57,10 +80,14 @@ export function NoteForm({
         }
         setReady(true);
       })
-      .catch(() => showToast({ style: Toast.Style.Failure, title: "Could not restore draft" }));
+      .catch(() => {
+        setHasRecovery(true);
+        setRecoveryError("Saved recovery could not be read. Use Discard Saved Recovery in Actions to start again.");
+      });
   }, [journalKey]);
   async function persist(draft: CaptureDraft) {
     await LocalStorage.setItem(journalKey, JSON.stringify(draft));
+    setHasRecovery(true);
     setCreated(draft.id);
     setUncertain(draft.uncertain);
   }
@@ -73,7 +100,7 @@ export function NoteForm({
     async function load() {
       let cursor = "";
       do {
-        const page = await client().request<Page<{ id: string; name: string }>>(
+        const page = await client().request<Page<Folder>>(
           "/v1/folders?" + new URLSearchParams({ limit: "100", ...(cursor ? { cursor } : {}) }),
           "GET",
           undefined,
@@ -96,7 +123,9 @@ export function NoteForm({
     if (lock.current || uncertain || !ready) return;
     const validationError = validateBody(body);
     setBodyError(validationError);
-    if (validationError) return;
+    const invalidTitle = title.length > 1000 ? "Use at most 1,000 characters." : undefined;
+    setTitleError(invalidTitle);
+    if (validationError || invalidTitle) return;
     lock.current = true;
     setBusy(true);
     let id = note?.id || created;
@@ -109,7 +138,13 @@ export function NoteForm({
       toast.title = note ? "Text appended" : "Note created";
       toast.primaryAction = { title: "Open Note", onAction: () => open(noteUrl(id!)) };
       setBody("");
-      pop();
+      setCreated(undefined);
+      setUncertain(false);
+      setHasRecovery(false);
+      setTitle("");
+      setFolder("");
+      if (root) await popToRoot();
+      else pop();
     } catch (e) {
       const options = {
         style: Toast.Style.Failure,
@@ -141,7 +176,10 @@ export function NoteForm({
         await showToast({ style: Toast.Style.Failure, title: "No text available" });
         return;
       }
-      changeBody(text);
+      if (!lock.current) {
+        setBody((current) => appendCapture(current, text));
+        setBodyError(undefined);
+      }
     } catch {
       await showToast({ style: Toast.Style.Failure, title: "No text available" });
     }
@@ -149,7 +187,7 @@ export function NoteForm({
   return (
     <Form
       enableDrafts={root}
-      isLoading={busy || !ready || foldersLoading}
+      isLoading={busy || (!ready && !recoveryError) || foldersLoading}
       navigationTitle={root ? undefined : note ? "Append to Note" : "Create Note"}
       actions={
         <ActionPanel>
@@ -160,17 +198,30 @@ export function NoteForm({
               onSubmit={submit}
             />
           )}
-          {!busy && (
+          {hasRecovery && !busy && (
             <Action
               title="Discard Saved Recovery"
               icon={Icon.Trash}
+              style={Action.Style.Destructive}
               onAction={async () => {
+                if (lock.current) return;
+                if (
+                  !(await confirmAlert({
+                    title: "Discard Saved Recovery?",
+                    message:
+                      "This removes the local recovery text and clears this form. Your saved note in Prismical is kept.",
+                    primaryAction: { title: "Discard", style: Alert.ActionStyle.Destructive },
+                  }))
+                )
+                  return;
                 if (lock.current) return;
                 await LocalStorage.removeItem(journalKey);
                 setCreated(undefined);
                 setUncertain(false);
                 setBody("");
                 setBodyError(undefined);
+                setHasRecovery(false);
+                setRecoveryError("");
                 setReady(true);
               }}
             />
@@ -187,6 +238,7 @@ export function NoteForm({
           {(note?.id || created) && (
             <Action.OpenInBrowser title="Check Note in Prismical" url={noteUrl((note?.id || created)!)} />
           )}
+          {recoveryError && <Form.Description title="Could Not Restore Recovery" text={recoveryError} />}
           {uncertain && !busy && (
             <Action
               title="I Checked — Allow Retry"
@@ -200,6 +252,7 @@ export function NoteForm({
         </ActionPanel>
       }
     >
+      {recoveryError && <Form.Description title="Could Not Restore Recovery" text={recoveryError} />}
       {uncertain && !busy && (
         <Form.Description
           title="Check Before Retrying"
@@ -222,8 +275,15 @@ export function NoteForm({
             title="Title"
             value={title}
             onChange={(value) => {
-              if (!lock.current) setTitle(value);
+              if (!lock.current) {
+                setTitle(value);
+                setTitleError(undefined);
+              }
             }}
+            error={titleError}
+            onBlur={(event) =>
+              setTitleError((event.target.value || "").length > 1000 ? "Use at most 1,000 characters." : undefined)
+            }
             placeholder="Optional title"
           />
           <Form.Dropdown
@@ -235,13 +295,20 @@ export function NoteForm({
             }}
           >
             <Form.Dropdown.Item value="" title="No Folder" />
+            {folder && !folders.some((f) => f.id === folder) && (
+              <Form.Dropdown.Item
+                value={folder}
+                title={foldersLoading ? "Loading Saved Folder…" : "Saved Folder (Unavailable)"}
+              />
+            )}
             {folders.map((f) => (
-              <Form.Dropdown.Item key={f.id} value={f.id} title={f.name} />
+              <Form.Dropdown.Item key={f.id} value={f.id} title={folderLabel(f, folders)} />
             ))}
           </Form.Dropdown>
         </>
       )}
       <Form.TextArea
+        enableMarkdown
         id="body"
         title={note ? "Text to Append" : "Note"}
         value={body}

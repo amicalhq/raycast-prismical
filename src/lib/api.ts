@@ -45,7 +45,7 @@ export class Api {
     this.base = origin(base);
   }
   async request<T>(path: string, method = "GET", body?: unknown, signal?: AbortSignal): Promise<T> {
-    if (!this.key.trim()) throw new Error("Add a Prismical API key in extension preferences to use cloud notes.");
+    if (!this.key.trim()) throw new Error("Add a Prismical API key in extension preferences to connect your account.");
     let response: Response;
     try {
       response = await this.fetcher(this.base + path, {
@@ -69,14 +69,23 @@ export class Api {
       const messages: Record<number, string> = {
         401: "API key is missing, expired, or revoked. Update extension preferences.",
         403: "You do not have permission for this action.",
-        404: "This note is unavailable or has been deleted.",
+        404:
+          method === "POST"
+            ? "The selected folder is unavailable. Choose another folder or No Folder."
+            : "The requested item is unavailable or has been deleted.",
         429: "Too many requests. Wait a moment before trying again.",
-        503: "The note service is unavailable. Your draft is preserved.",
+        503:
+          method === "GET"
+            ? "Prismical is temporarily unavailable. Try again shortly."
+            : "Prismical is temporarily unavailable. Check whether the change saved before retrying.",
       };
       throw new ApiError(
         response.status,
         method !== "GET" && response.status >= 500,
-        messages[response.status] ?? `Prismical returned HTTP ${response.status}.`,
+        messages[response.status] ??
+          (response.status === 400
+            ? "The request is invalid. Check the title, text, search, and selected folder."
+            : `Prismical returned HTTP ${response.status}.`),
       );
     }
     try {
@@ -96,6 +105,7 @@ export class Api {
     return this.request<Note>(`/v1/notes/${encodeURIComponent(id)}?include_body=1`, "GET", undefined, signal);
   }
   async notes(query: string, cursor = "", signal?: AbortSignal): Promise<{ notes: Note[]; next?: string }> {
+    if (query.trim().length > 500) throw new ApiError(400, false, "Use at most 500 characters in your search.");
     if (query.trim()) {
       const page = await this.request<{
         results: Array<{ note_id: string; title: string; content_text: string; updated_at: string }>;
@@ -117,16 +127,32 @@ export class Api {
         next: next < page.total && page.results.length ? String(next) : undefined,
       };
     }
-    const page = await this.request<Page<Note>>(
-      "/v1/notes?" +
-        new URLSearchParams({ limit: "30", sort: "updated_at", order: "desc", ...(cursor ? { cursor } : {}) }),
-      "GET",
-      undefined,
-      signal,
-    );
-    return { notes: page.results.filter((n) => !n.trashed_at), next: page.has_more ? page.next_cursor : undefined };
+    const seen = new Set<string>();
+    let current = cursor;
+    while (true) {
+      if (seen.has(current)) throw new ApiError(0, false, "Prismical repeated a page. Refresh to try again.");
+      seen.add(current);
+      const page = await this.request<Page<Note>>(
+        "/v1/notes?" +
+          new URLSearchParams({
+            limit: "30",
+            sort: "updated_at",
+            order: "desc",
+            ...(current ? { cursor: current } : {}),
+          }),
+        "GET",
+        undefined,
+        signal,
+      );
+      const notes = page.results.filter((n) => !n.trashed_at);
+      const next = page.has_more ? page.next_cursor : undefined;
+      if (notes.length || !next) return { notes, next };
+      current = next;
+    }
   }
+
   create(title: string, folderId: string) {
+    if (title.length > 1000) throw new ApiError(400, false, "Use at most 1,000 characters in the title.");
     return this.request<Note>("/v1/notes", "POST", {
       ...(title.trim() ? { title: title.trim() } : {}),
       ...(folderId ? { folder_id: folderId } : {}),

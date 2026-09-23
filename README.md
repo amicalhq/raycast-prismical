@@ -28,7 +28,7 @@ This extension works with cloud notes. It doesn’t require the desktop app and 
 
 ## Privacy and saved drafts
 
-Your API key is stored in Raycast’s password preferences. Requests go directly to Prismical, and the extension adds no analytics. Clipboard and selected text are read only when you choose those actions.
+Your API key is stored in Raycast’s password preferences. Requests go directly to Prismical, and the extension adds no analytics. Clipboard and selected text are read only when you choose those actions, and are appended to text already in the form. Note previews omit embedded images and raw HTML to avoid loading external content; copied Markdown remains unchanged.
 
 If a save is interrupted, the extension keeps recovery text locally. Follow the prompt to check whether the note saved before retrying. **Discard Saved Recovery** removes the local recovery text without deleting your note in Prismical.
 

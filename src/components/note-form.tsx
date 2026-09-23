@@ -172,13 +172,13 @@ export function NoteForm({
         </ActionPanel>
       }
     >
-      {uncertain && (
+      {uncertain && !busy && (
         <Form.Description
           title="Check Before Retrying"
           text="The request may have saved. Check Prismical before allowing a retry to avoid duplicate text or notes. Your draft is preserved."
         />
       )}
-      {created && (
+      {created && !note && !busy && (
         <Form.Description title="Note Created" text="The note already exists. Saving again writes to that same note." />
       )}
       {!note && !created && (

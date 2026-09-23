@@ -64,7 +64,7 @@
       "name": "apiKey",
       "type": "password",
       "title": "Prismical API Key",
-      "description": "Create a workspace API key in Prismical Cloud \u2192 Settings \u2192 API & MCP. Local-only desktop notes are not supported.",
+      "description": "Connect your Prismical account. In the Prismical app, go to Settings → API & MCP to create an API key.",
       "required": true
     }
   ],

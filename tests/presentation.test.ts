@@ -22,3 +22,18 @@ test("preview suppresses inline, reference and HTML images while retaining text 
   assert.match(result, /Hello \*\*world\*\*/);
   assert.match(result, /\[Open\]\(https:\/\/example.com\)/);
 });
+
+test("removing block HTML preserves surrounding Markdown blocks", () => {
+  const result = previewMarkdown("# Heading\n\nPara one\n\n<div>x</div>\n\n- item\n\nPara two");
+  assert.match(result, /^# Heading\n\nPara one\n\n[*-] item\n\nPara two\n$/);
+});
+test("removing inline HTML preserves paragraph text", () => {
+  assert.equal(previewMarkdown("Before <span>inside</span> after."), "Before inside after.\n");
+});
+test("preview preserves task checkboxes, tables and strikethrough", () => {
+  const result = previewMarkdown("- [ ] todo\n- [x] done\n\n~~removed~~\n\n| A | B |\n| - | - |\n| one | two |");
+  assert.match(result, /[*-] \[ \] todo/);
+  assert.match(result, /[*-] \[x\] done/);
+  assert.match(result, /~~removed~~/);
+  assert.match(result, /\| A\s*\| B\s*\|/);
+});

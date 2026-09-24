@@ -1,21 +1,25 @@
 import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown, gfmToMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
 import { toMarkdown } from "mdast-util-to-markdown";
 import type { Root, RootContent } from "mdast";
 
 /** Render note text without fetching embedded images or interpreting raw HTML. */
 export function previewMarkdown(markdown: string): string {
-  const tree = fromMarkdown(markdown);
+  const tree = fromMarkdown(markdown, { extensions: [gfm()], mdastExtensions: [gfmFromMarkdown()] });
   function clean(parent: Root | { children: RootContent[] }) {
-    parent.children = parent.children.map((node) => {
-      if (node.type === "image" || node.type === "imageReference")
-        return { type: "text", value: node.alt ? `[Image: ${node.alt}]` : "[Image]" };
-      if (node.type === "html") return { type: "text", value: "" };
-      if ("children" in node) clean(node as { children: RootContent[] });
-      return node;
-    }) as typeof parent.children;
+    // Remove HTML nodes rather than inserting inline text into block containers.
+    parent.children = parent.children
+      .filter((node) => node.type !== "html")
+      .map((node) => {
+        if (node.type === "image" || node.type === "imageReference")
+          return { type: "text", value: node.alt ? `[Image: ${node.alt}]` : "[Image]" };
+        if ("children" in node) clean(node as { children: RootContent[] });
+        return node;
+      }) as typeof parent.children;
   }
   clean(tree);
-  return toMarkdown(tree);
+  return toMarkdown(tree, { extensions: [gfmToMarkdown()] });
 }
 export interface Folder {
   id: string;

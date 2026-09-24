@@ -238,7 +238,6 @@ export function NoteForm({
           {(note?.id || created) && (
             <Action.OpenInBrowser title="Check Note in Prismical" url={noteUrl((note?.id || created)!)} />
           )}
-          {recoveryError && <Form.Description title="Could Not Restore Recovery" text={recoveryError} />}
           {uncertain && !busy && (
             <Action
               title="I Checked — Allow Retry"

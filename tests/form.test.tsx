@@ -116,6 +116,8 @@ test("corrupt recovery stops loading and requires confirmed discard", async () =
     renderer = create(<NoteForm root />);
   });
   expect(host("form").props.isLoading).toBe(false);
+  expect(host("panel").findAllByType("description" as never)).toHaveLength(0);
+  expect(renderer.root.findAllByType("description" as never)).toHaveLength(1);
   expect(renderer.root.findAllByType("submit" as never)).toHaveLength(0);
   // Actions are supplied as a React element prop; inspect the discard callback directly.
   const actions = host("form").props.actions.props.children.flat().filter(Boolean);

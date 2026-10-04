@@ -5,6 +5,8 @@ import { beforeEach, afterEach, expect, test, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   storage: new Map<string, string>(),
+  apiKey: "test" as string | undefined,
+  request: vi.fn(),
   create: vi.fn(),
   write: vi.fn(),
   pop: vi.fn(),
@@ -14,6 +16,8 @@ const mocks = vi.hoisted(() => ({
   toast: { style: "", title: "" },
 }));
 vi.mock("@raycast/api", () => ({
+  Detail: "detail",
+  openExtensionPreferences: vi.fn(),
   LaunchType: { UserInitiated: "userInitiated" },
   Form: Object.assign(
     (props: { children: React.ReactNode; actions: React.ReactNode }) =>
@@ -57,10 +61,11 @@ vi.mock("@raycast/api", () => ({
 }));
 vi.mock("../src/lib/config", () => ({
   API_ORIGIN: "https://example.com",
-  settings: () => ({ apiKey: "test" }),
+  settings: () => ({ apiKey: mocks.apiKey }),
   noteUrl: (id: string) => `https://example.com/${id}`,
-  client: () => ({ create: mocks.create, write: mocks.write, request: async () => ({ results: [], has_more: false }) }),
+  client: () => ({ create: mocks.create, write: mocks.write, request: mocks.request }),
 }));
+import { ApiError } from "../src/lib/api";
 import { NoteForm } from "../src/components/note-form";
 import CreateNote from "../src/create-note";
 import { createHash } from "node:crypto";
@@ -69,12 +74,14 @@ const host = (name: string) => renderer.root.findByType(name as never);
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   mocks.storage.clear();
+  mocks.apiKey = "test";
   mocks.remove.mockImplementation(async (key: string) => {
     mocks.storage.delete(key);
   });
   vi.clearAllMocks();
   mocks.create.mockImplementation(async () => ({ id: `note-${mocks.create.mock.calls.length}` }));
   mocks.write.mockResolvedValue({});
+  mocks.request.mockResolvedValue({ results: [], has_more: false });
   mocks.confirm.mockResolvedValue(false);
 });
 afterEach(async () => {
@@ -156,4 +163,93 @@ test.each(["create", "append"])("%s succeeds even when completed recovery cleanu
   await act(async () => host("submit").props.onSubmit());
   expect(mocks.write.mock.calls.map((call) => call[1])).toEqual(["saved text", "new text"]);
   expect(mocks.create).toHaveBeenCalledTimes(mode === "create" ? 2 : 0);
+});
+
+const recoveryKey = () =>
+  "capture-" +
+  createHash("sha256")
+    .update(JSON.stringify(["https://example.com", "test", "new-root"]))
+    .digest("hex");
+test("confirmed discard clears all restored create fields", async () => {
+  mocks.storage.set(
+    recoveryKey(),
+    JSON.stringify({ title: "Recovered", body: "Text", folder: "folder", uncertain: true }),
+  );
+  await act(async () => {
+    renderer = create(<NoteForm root />);
+  });
+  mocks.confirm.mockResolvedValue(true);
+  const discard = host("form")
+    .props.actions.props.children.flat()
+    .filter(Boolean)
+    .find((a: React.ReactElement<{ title?: string }>) => a.props.title === "Discard Saved Recovery");
+  await act(async () => discard.props.onAction());
+  expect(host("field").props.value).toBe("");
+  expect(host("dropdown").props.value).toBe("");
+  expect(host("area").props.value).toBe("");
+  expect(mocks.create).not.toHaveBeenCalled();
+  expect(mocks.write).not.toHaveBeenCalled();
+});
+test("partial create reports saved note and retains its recovery ID", async () => {
+  mocks.write.mockRejectedValue(new Error("Connection lost"));
+  await act(async () => {
+    renderer = create(<NoteForm root />);
+  });
+  await act(async () => host("area").props.onChange("pending text"));
+  await act(async () => host("submit").props.onSubmit());
+  expect(mocks.toast.title).toBe("Note created; check whether the text saved");
+  expect(JSON.parse(mocks.storage.get(recoveryKey())!)).toMatchObject({
+    id: "note-1",
+    body: "pending text",
+    uncertain: true,
+  });
+  expect(mocks.create).toHaveBeenCalledTimes(1);
+});
+test.each([
+  ["a", "a"],
+  ["a", "b", "a"],
+])("folder pagination stops repeated cursor path %j", async (...cursors) => {
+  for (const cursor of cursors)
+    mocks.request.mockResolvedValueOnce({ results: [], has_more: true, next_cursor: cursor });
+  await act(async () => {
+    renderer = create(<NoteForm root />);
+  });
+  expect(mocks.request).toHaveBeenCalledTimes(cursors.length);
+  expect(host("form").props.isLoading).toBe(false);
+  expect(
+    renderer.root
+      .findAllByType("description" as never)
+      .map((x) => x.props.text)
+      .join(" "),
+  ).toContain("Folder pagination");
+});
+
+test.each([undefined, "", "   "])(
+  "account-backed create with key %j shows setup before mounting its network form",
+  async (key) => {
+    mocks.apiKey = key;
+    await act(async () => {
+      renderer = create(<CreateNote launchType={LaunchType.UserInitiated} arguments={{}} />);
+    });
+    expect(host("detail").props.markdown).toContain("Connect Prismical");
+    expect(mocks.request).not.toHaveBeenCalled();
+    expect(renderer.root.findAllByType("form" as never)).toHaveLength(0);
+  },
+);
+test("definite append rejection preserves created ID and retries only the append", async () => {
+  mocks.write.mockRejectedValueOnce(new ApiError(403, false, "Rejected"));
+  await act(async () => {
+    renderer = create(<NoteForm root />);
+  });
+  await act(async () => host("area").props.onChange("pending text"));
+  await act(async () => host("submit").props.onSubmit());
+  expect(mocks.toast.title).toBe("Note created; text wasn’t saved");
+  expect(JSON.parse(mocks.storage.get(recoveryKey())!)).toMatchObject({
+    id: "note-1",
+    body: "pending text",
+    uncertain: false,
+  });
+  await act(async () => host("submit").props.onSubmit());
+  expect(mocks.create).toHaveBeenCalledTimes(1);
+  expect(mocks.write.mock.calls.map((call) => call[0])).toEqual(["note-1", "note-1"]);
 });

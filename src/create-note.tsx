@@ -1,5 +1,10 @@
 import { LaunchProps } from "@raycast/api";
 import { NoteForm, NoteDraftValues } from "./components/note-form";
+import { AccountRequired } from "./components/account-required";
 export default function CreateNote({ draftValues }: LaunchProps<{ draftValues: NoteDraftValues }>) {
-  return <NoteForm root draftValues={draftValues} />;
+  return (
+    <AccountRequired>
+      <NoteForm root draftValues={draftValues} />
+    </AccountRequired>
+  );
 }

@@ -15,7 +15,7 @@ import {
   popToRoot,
 } from "@raycast/api";
 import { useEffect, useRef, useState } from "react";
-import { Note, Page } from "../lib/api";
+import { ApiError, Note, Page } from "../lib/api";
 import { API_ORIGIN, client, noteUrl, settings } from "../lib/config";
 import { createHash } from "node:crypto";
 import { CaptureDraft, saveCapture } from "../lib/capture";
@@ -105,6 +105,7 @@ export function NoteForm({
     setFolders([]);
     async function load() {
       let cursor = "";
+      const seen = new Set<string>();
       do {
         const page = await client().request<Page<Folder>>(
           "/v1/folders?" + new URLSearchParams({ limit: "100", ...(cursor ? { cursor } : {}) }),
@@ -114,6 +115,8 @@ export function NoteForm({
         );
         setFolders((old) => [...old, ...page.results]);
         cursor = page.has_more ? page.next_cursor || "" : "";
+        if (page.has_more && (!cursor || seen.has(cursor))) throw new Error("Folder pagination did not advance.");
+        seen.add(cursor);
       } while (cursor);
     }
     load()
@@ -138,7 +141,11 @@ export function NoteForm({
     let toast: Toast | undefined;
     try {
       toast = await showToast({ style: Toast.Style.Animated, title: note ? "Appending text…" : "Saving note…" });
-      id = await saveCapture(client(), { title, body, folder, id, uncertain: false }, persist);
+      id = await saveCapture(client(), { title, body, folder, id, uncertain: false }, async (draft) => {
+        // Capture acknowledged creation synchronously, even when the following write fails.
+        id = draft.id;
+        await persist(draft);
+      });
       // saveCapture durably cleared the pending body; cleanup must not turn a saved write into a retry.
       await LocalStorage.removeItem(journalKey).catch(() => undefined);
       toast.style = Toast.Style.Success;
@@ -155,7 +162,15 @@ export function NoteForm({
     } catch (e) {
       const options = {
         style: Toast.Style.Failure,
-        title: id ? "Could not save text" : "Could not create note",
+        title:
+          id && !note
+            ? e instanceof ApiError && !e.uncertain
+              ? "Note created; text wasn’t saved"
+              : "Note created; check whether the text saved"
+            : id
+              ? "Could not save text"
+              : "Could not create note",
+        ...(id ? { primaryAction: { title: "Open Note", onAction: () => open(noteUrl(id!)) } } : {}),
         message: e instanceof Error ? e.message : String(e),
       };
       if (toast) Object.assign(toast, options);
@@ -225,6 +240,9 @@ export function NoteForm({
                 await LocalStorage.removeItem(journalKey);
                 setCreated(undefined);
                 setUncertain(false);
+                setTitle("");
+                setFolder("");
+                setTitleError(undefined);
                 setBody("");
                 setBodyError(undefined);
                 setHasRecovery(false);

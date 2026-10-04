@@ -1,2 +1,9 @@
 import { Notes } from "./components/notes";
-export default Notes;
+import { AccountRequired } from "./components/account-required";
+export default function Command() {
+  return (
+    <AccountRequired>
+      <Notes />
+    </AccountRequired>
+  );
+}
